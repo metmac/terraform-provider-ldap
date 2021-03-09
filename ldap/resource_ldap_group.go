@@ -39,7 +39,7 @@ func resourceLDAPGroup() *schema.Resource {
 			"members": &schema.Schema{
 				Type:     schema.TypeSet,
 				Optional: true,
-				ForceNew: true,
+				ForceNew: false,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -106,16 +106,19 @@ func resourceLDAPGroupRead(ctx context.Context, d *schema.ResourceData, m interf
 	if val, ok := attributes["description"]; ok {
 		desc = val[0]
 	}
+
 	if err := d.Set("description", desc); err != nil {
 		return diag.FromErr(err)
 	}
 
 	members := []string{}
+
 	for name, values := range attributes {
 		if name == "member" && len(values) >= 1 {
 			members = append(members, values...)
 		}
 	}
+
 	err = d.Set("members", members)
 
 	return diag.FromErr(err)
@@ -129,6 +132,20 @@ func resourceLDAPGroupUpdate(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.FromErr(err)
 	}
 
+	_, membersExist := d.GetOk("members")
+
+	if membersExist && d.HasChange("members") {
+		_, newSet := d.GetChange("members")
+
+		newMembers := []string{}
+		for _, member := range newSet.(*schema.Set).List() {
+			newMembers = append(newMembers, member.(string))
+		}
+
+		if err := client.UpdateGroupMembership(dn, newMembers); err != nil {
+			return diag.FromErr(err)
+		}
+	}
 	return resourceLDAPGroupRead(ctx, d, m)
 }
 
